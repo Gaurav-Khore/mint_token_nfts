@@ -4,6 +4,7 @@ import { MintNfts } from "../target/types/mint_nfts";
 import { publicKey } from "@coral-xyz/anchor/dist/cjs/utils";
 import { min } from "bn.js";
 import { ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { PublicKey } from "@solana/web3.js";
 
 describe("mint_nfts", () => {
   // Configure the client to use the local cluster.
@@ -15,7 +16,7 @@ describe("mint_nfts", () => {
   const program = anchor.workspace.MintNfts as Program<MintNfts>;
 
   const [mint, bumps] = anchor.web3.PublicKey.findProgramAddressSync(
-    [Buffer.from("mint")],
+    [Buffer.from("mint1")],
    program.programId
   );
 
@@ -24,12 +25,29 @@ describe("mint_nfts", () => {
     program.programId
   );
 
+  const tokenMetadataProgram = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+  const tokenProgram = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+  const [metadataAccount] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from('metadata'),tokenMetadataProgram.toBuffer(),mint.toBuffer()],
+    tokenMetadataProgram
+  );
+
+  const spl_token = {
+    name: 'G Coin',
+    symbol: 'GOLDSOL',
+    uri: 'https://raw.githubusercontent.com/Gaurav-Khore/mint_token_nfts/refs/heads/main/.assests/spl-token.json'
+  }
+
   it("Create Mint!", async () => {
     // Add your test here.
     console.log(mint.toBase58());
-    const tx = await program.methods.createMint().accounts({
+    const tx = await program.methods.createMint(spl_token.name,spl_token.symbol,spl_token.uri).accounts({
       signer: payer.publicKey,
-      mint: mint
+      mint: mint,
+      metadataAccount: metadataAccount,
+      tokenMetadataProgram: tokenMetadataProgram,
+      tokenProgram: tokenProgram
     })
     .rpc();
     console.log("Your transaction signature", tx);
