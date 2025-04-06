@@ -2,7 +2,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { MintNfts } from "../target/types/mint_nfts";
 import { publicKey } from "@coral-xyz/anchor/dist/cjs/utils";
-import { min } from "bn.js";
+import { BN, min } from "bn.js";
 import { ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { PublicKey } from "@solana/web3.js";
 
@@ -21,7 +21,7 @@ describe("mint_nfts", () => {
   );
 
   const [tokenAccount] = anchor.web3.PublicKey.findProgramAddressSync(
-    [Buffer.from("token")],
+    [Buffer.from("token1")],
     program.programId
   );
 
@@ -76,11 +76,60 @@ describe("mint_nfts", () => {
       TOKEN_PROGRAM_ID,
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
+    console.log("user token acount",userTokenAccount);
     const tx = await program.methods.createTokenAccountAssociated().accounts({
       mint: mint,
       tokenAccount: userTokenAccount
     }).rpc();
 
     console.log("Associated Successful , ",tx);
+  });
+
+  it("Mint G Coins" , async () => {
+    console.log("Mint Account = ",mint.toBase58());
+
+    const amount = new anchor.BN(10000000);
+    const userTokenAccount = await getAssociatedTokenAddress(
+      mint,
+      payer.publicKey,
+      false,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    const tx = await program.methods.miningToken(amount)
+    .accounts({
+      mint: mint,
+      tokenAccount: userTokenAccount
+    }).rpc();
+
+    console.log("Mining completed in tx = ",tx);
+  });
+
+
+  it("Transfer Tokens", async () => {
+
+    const senderTokenAccount = await getAssociatedTokenAddress(
+      mint,
+      payer.publicKey,
+      false,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    console.log("Snder Token account = ",senderTokenAccount);
+    console.log("Receiver Token Account = ",tokenAccount);
+    console.log("Mint = ", mint);
+
+    let amount = new anchor.BN(100000)
+
+    const tx = await program.methods.transferToken(amount)
+    .accounts({
+      mint: mint,
+      senderTokenAccount: senderTokenAccount,
+      receiverTokenAccount: tokenAccount
+    }).rpc();
+
+    console.log("Trnasfer is successfull , please check tx = ",tx);
+
   })
 });

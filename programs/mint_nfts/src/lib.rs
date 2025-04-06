@@ -1,12 +1,12 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{associated_token::AssociatedToken, metadata::Metadata, token_interface::{Mint, TokenAccount, TokenInterface}};
+use anchor_spl::{associated_token::AssociatedToken, metadata::Metadata, token_interface::{Mint, TokenAccount, TokenInterface,MintTo}};
 
 declare_id!("2KVpzmgNNyhL2qnfists6uxjsAytJdxNdUaBEML77rBU");
 
 #[program]
 pub mod mint_nfts {
 
-    use anchor_spl::metadata::{create_metadata_accounts_v3, mpl_token_metadata::types::DataV2, CreateMetadataAccountsV3};
+    use anchor_spl::{metadata::{create_metadata_accounts_v3, mpl_token_metadata::types::DataV2, CreateMetadataAccountsV3}, token_interface};
 
     use super::*;
 
@@ -58,6 +58,51 @@ pub mod mint_nfts {
         msg!("Token Account Created Successfully associated .. {:?}",ctx.accounts.token_account.key());
         Ok(())
     }
+
+    //mint token for itself like mine token
+    pub fn mining_token(ctx:Context<MintToken>,amount: u64) -> Result<()> {
+        msg!("We will mine the G Coins");
+        msg!("Mint account = {:?}",ctx.accounts.mint.key());
+        
+        let signer_seeds : &[&[&[u8]]] = &[&[b"mint1",&[ctx.bumps.mint]]];
+
+        let cpi_context = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(), 
+            MintTo {
+                mint: ctx.accounts.mint.to_account_info(),
+                to: ctx.accounts.token_account.to_account_info(),
+                authority: ctx.accounts.payer.to_account_info(), 
+            }
+        ).with_signer(signer_seeds);
+
+        token_interface::mint_to(cpi_context, amount)?;
+
+        msg!("Mining successfully...");
+        Ok(())
+    }
+
+    pub fn transfer_token(ctx: Context<TransferToken>,amount: u64) -> Result<()> {
+        msg!("Transfer G coin intiated ");
+
+        let decimals = ctx.accounts.mint.decimals;
+
+        let cpi_accounts = token_interface::TransferChecked {
+            mint: ctx.accounts.mint.to_account_info(),
+            from: ctx.accounts.sender_token_account.to_account_info(),
+            to: ctx.accounts.receiver_token_account.to_account_info(),
+            authority: ctx.accounts.payer.to_account_info()
+        };
+
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+
+        let cpi_context = CpiContext::new(
+            cpi_program,cpi_accounts);
+
+        token_interface::transfer_checked(cpi_context, amount, decimals)?;
+        
+        msg!("Transafer successfully...");
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -106,7 +151,7 @@ pub struct CreateTokenAccount<'info> {
         token::mint = mint,
         token::authority = token_account,
         token::token_program = token_program,
-        seeds = [b"token"],
+        seeds = [b"token1"],
         bump
     )]
     pub token_account : InterfaceAccount<'info,TokenAccount>,
@@ -134,4 +179,59 @@ pub struct CreateTokenAccountAssociated<'info> {
     pub token_program : Interface<'info, TokenInterface>,
     pub associated_token_program:Program<'info,AssociatedToken>,
     pub system_program: Program<'info,System>
+}
+
+
+// mint token to self account kind of mining the tokens
+#[derive(Accounts)]
+pub struct MintToken<'info> {
+
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"mint1"],
+        bump
+    )]
+    pub mint : InterfaceAccount<'info,Mint>,
+
+    #[account(
+        init_if_needed,
+        payer= payer,
+        associated_token::mint = mint,
+        associated_token::authority = payer,
+        associated_token::token_program = token_program,
+    )]
+    pub token_account : InterfaceAccount<'info,TokenAccount>,
+    pub token_program : Interface<'info,TokenInterface>,
+    pub associated_token_program: Program<'info,AssociatedToken>,
+    pub system_program: Program<'info,System>
+}
+
+#[derive(Accounts)]
+pub struct TransferToken<'info> {
+
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"mint1"],
+        bump
+    )]
+    pub mint: InterfaceAccount<'info,Mint>,
+
+    #[account(
+        mut,
+    )]
+    pub sender_token_account : InterfaceAccount<'info,TokenAccount>,
+
+    #[account(
+        mut,
+        seeds = [b"token1"],
+        bump
+    )]
+    pub receiver_token_account : InterfaceAccount<'info,TokenAccount>,
+    pub token_program: Interface<'info,TokenInterface>
 }
