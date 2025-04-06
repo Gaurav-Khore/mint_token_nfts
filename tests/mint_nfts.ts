@@ -3,8 +3,8 @@ import { Program } from "@coral-xyz/anchor";
 import { MintNfts } from "../target/types/mint_nfts";
 import { publicKey } from "@coral-xyz/anchor/dist/cjs/utils";
 import { BN, min } from "bn.js";
-import { ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { PublicKey } from "@solana/web3.js";
+import { ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { Keypair, PublicKey } from "@solana/web3.js";
 
 describe("mint_nfts", () => {
   // Configure the client to use the local cluster.
@@ -37,6 +37,12 @@ describe("mint_nfts", () => {
     name: 'G Coin',
     symbol: 'GOLDSOL',
     uri: 'https://raw.githubusercontent.com/Gaurav-Khore/mint_token_nfts/refs/heads/main/.assests/spl-token.json'
+  }
+
+  const nft_token = {
+    name: 'G Coin NFT',
+    symbol: 'NFTGOLDSOL',
+    uri: 'https://raw.githubusercontent.com/Gaurav-Khore/mint_token_nfts/refs/heads/main/.assests/nft-token.json'
   }
 
   it("Create Mint!", async () => {
@@ -131,5 +137,45 @@ describe("mint_nfts", () => {
 
     console.log("Trnasfer is successfull , please check tx = ",tx);
 
+  });
+
+
+  it("Create NFT" , async () => {
+    console.log("Creating nft");
+
+    const mintKeyPair = new Keypair();
+    console.log("mint token for nft ",mintKeyPair.publicKey.toBase58());
+
+    const userTokenAccount = getAssociatedTokenAddressSync(
+      mintKeyPair.publicKey,
+      payer.publicKey
+    );
+
+    const [metadataAccount] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('metadata'),tokenMetadataProgram.toBuffer(),mintKeyPair.publicKey.toBuffer()],
+      tokenMetadataProgram
+    );
+
+    const [editionAccount] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('metadata'),tokenMetadataProgram.toBuffer(),mintKeyPair.publicKey.toBuffer(),Buffer.from("edition")],
+      tokenMetadataProgram
+    );
+
+    console.log("User Token Account = ",userTokenAccount);
+
+    const tx = await program.methods.mintNfts(nft_token.name,nft_token.symbol,nft_token.uri)
+    .accounts({
+      mintAccount: mintKeyPair.publicKey,
+      associatedTokenAccount: userTokenAccount,
+      payer: payer.publicKey,
+      metadataAccount: metadataAccount,
+      editionAccount: editionAccount,
+      tokenMetadataProgram: tokenMetadataProgram,
+      tokenProgram: tokenProgram
+    }).signers([mintKeyPair]).rpc();
+
+    console.log("nft created successfully , tx = ",tx);
+
   })
+
 });
