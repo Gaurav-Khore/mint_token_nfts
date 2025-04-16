@@ -3,8 +3,9 @@ import { Program } from "@coral-xyz/anchor";
 import { MintNfts } from "../target/types/mint_nfts";
 import { publicKey } from "@coral-xyz/anchor/dist/cjs/utils";
 import { BN, min } from "bn.js";
-import { ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { Keypair, PublicKey } from "@solana/web3.js";
+import { ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, getAssociatedTokenAddressSync, getTokenMetadata, TOKEN_PROGRAM_ID} from "@solana/spl-token";
+import { clusterApiUrl, Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Metaplex } from "@metaplex-foundation/js";
 
 describe("mint_nfts", () => {
   // Configure the client to use the local cluster.
@@ -13,7 +14,11 @@ describe("mint_nfts", () => {
 
   const payer = provider.wallet as anchor.Wallet;
 
+  const connection = provider.connection;
+
   const program = anchor.workspace.MintNfts as Program<MintNfts>;
+
+  const metaplex = Metaplex.make(connection);
 
   const [mint, bumps] = anchor.web3.PublicKey.findProgramAddressSync(
     [Buffer.from("mint1")],
@@ -150,7 +155,6 @@ describe("mint_nfts", () => {
       mintKeyPair.publicKey,
       payer.publicKey
     );
-
     const [metadataAccount] = anchor.web3.PublicKey.findProgramAddressSync(
       [Buffer.from('metadata'),tokenMetadataProgram.toBuffer(),mintKeyPair.publicKey.toBuffer()],
       tokenMetadataProgram
@@ -176,6 +180,114 @@ describe("mint_nfts", () => {
 
     console.log("nft created successfully , tx = ",tx);
 
-  })
+  });
 
+  // get token metadata
+  it("get metadata of the token" , async () => {
+    const tokenAccounts =await connection.getTokenAccountsByOwner(
+      payer.publicKey,
+      {
+        programId: TOKEN_PROGRAM_ID
+      }
+    );
+    console.log("Token accounts = ",tokenAccounts);
+
+    const nfts: {mint: PublicKey, amount: bigint, metadata?:  any}[] = [];
+
+    for(let tokenAccount of tokenAccounts.value) {
+      const accountInfo = await connection.getParsedAccountInfo(
+        tokenAccount.pubkey
+      );
+
+      const parsedData = accountInfo.value?.data.parsed.info;
+
+      if (parsedData.tokenAmount.amount === '1' && parsedData.tokenAmount.decimals === 0) {
+        const mintAddress = new PublicKey(parsedData.mint);
+        console.log("Owner = ",parsedData.owner);
+        const metadata = await metaplex.nfts().findByMint({mintAddress: mintAddress});
+        nfts.push({
+          mint: mintAddress,
+          amount: BigInt(parsedData.tokenAmount.amount),
+          metadata: metadata?.json || null 
+        });
+      }
+    }
+    
+    console.log("All the nfts of the wallet = ",payer.publicKey);
+    console.log("nfts = ",nfts);
+  });
+
+  it("Transfer nft ", async () => {
+    // get the nft information from the sender
+
+    const tokenAccounts = await connection.getTokenAccountsByOwner(
+      payer.publicKey,
+      {
+        programId: TOKEN_PROGRAM_ID
+      }
+    );
+
+    const senderNft: {mint: PublicKey, amount: BigInt, metadata?: any}[] = []
+
+    console.log("got the token accounts");
+
+    for(let tokenAccount of tokenAccounts.value) {
+      const accountInfo = await connection.getParsedAccountInfo(
+        tokenAccount.pubkey
+      );
+      const parsedData = accountInfo.value?.data.parsed.info;
+      if(parsedData.tokenAmount.amount === '1' && parsedData.tokenAmount.decimals === 0) {
+        const mintAddress = new PublicKey(parsedData.mint);
+
+        const metadata = await metaplex.nfts().findByMint({mintAddress: mintAddress});
+
+        senderNft.push(
+          {
+            mint: mintAddress,
+            amount: BigInt(parsedData.tokenAmount.amount),
+            metadata: metadata
+          }
+        );
+      }
+    }
+
+    console.log("Nft list = ",senderNft);
+    const nftMint = senderNft[0].mint;
+
+    console.log("Nft to be transfered =" ,nftMint);
+
+    const receiver = new PublicKey("2DdMJW52QSop2MJ7VmjLF1XjrLjtFEGfCHShkimcropM");
+
+    const senderAssociatedTokenAccount = await getAssociatedTokenAddress(
+      nftMint,
+      payer.publicKey,
+      false,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    console.log("Sender token account = ",senderAssociatedTokenAccount);
+
+    const receiverAssociatedTokenAccount = await getAssociatedTokenAddress(
+      nftMint,
+      receiver,
+      false,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    console.log("receiver token interface account = ",receiverAssociatedTokenAccount);
+
+    const tx = await program.methods.transeferNfts().accounts({
+      mint: nftMint,
+      sender: payer.publicKey,
+      senderTokenAccount: senderAssociatedTokenAccount,
+      receiver: receiver,
+      receiverTokenAccount: receiverAssociatedTokenAccount,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      tokenProgram: TOKEN_PROGRAM_ID
+    }).rpc();
+
+    console.log("Transfer is successfull = ",tx);
+  })
 });

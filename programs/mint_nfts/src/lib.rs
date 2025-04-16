@@ -173,6 +173,25 @@ pub mod mint_nfts {
 
         Ok(())
     }
+
+    pub fn transefer_nfts(ctx: Context<TransferNft>) -> Result<()> {
+
+        msg!("Transfer started for mint = {:?}",ctx.accounts.mint.key());
+
+        token_interface::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token_interface::TransferChecked { 
+                    from: ctx.accounts.sender_token_account.to_account_info(), 
+                    mint: ctx.accounts.mint.to_account_info(), 
+                    to: ctx.accounts.receiver_token_account.to_account_info(), 
+                    authority: ctx.accounts.sender.to_account_info() 
+                }
+            )
+            , 1, ctx.accounts.mint.decimals)?;
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -356,4 +375,38 @@ pub struct MintNFT<'info> {
     pub system_program: Program<'info,System>,
     pub rent: Sysvar<'info,Rent>
 
+}
+
+// tranasfer nft struct
+#[derive(Accounts)]
+pub struct TransferNft<'info> {
+    #[account(mut)]
+    pub sender: Signer<'info>,
+
+    #[account(mut)]
+    pub mint: InterfaceAccount<'info,Mint>,
+
+    #[account(
+        init_if_needed,
+        payer = sender,
+        associated_token::mint = mint,
+        associated_token::authority = sender,
+        associated_token::token_program = token_program
+    )]
+    pub sender_token_account: InterfaceAccount<'info,TokenAccount>,
+
+    #[account(
+        init_if_needed,
+        payer = sender,
+        associated_token::mint = mint,
+        associated_token::authority = receiver,
+        associated_token::token_program = token_program
+    )]
+    pub receiver_token_account: InterfaceAccount<'info,TokenAccount>,
+
+    #[account(mut)]
+    pub receiver: SystemAccount<'info>,
+    pub token_program : Program<'info,Token>,
+    pub associated_token_program: Program<'info,AssociatedToken>,
+    pub system_program: Program<'info,System>
 }
